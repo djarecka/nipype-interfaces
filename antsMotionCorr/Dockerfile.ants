@@ -1,0 +1,85 @@
+FROM smpadhy/ants-motion-corr
+MAINTAINER Satrajit Ghosh <satra@mit.edu>
+
+# This is build from the new nipype base image that has ANTS interface for motion correction
+# This could be merged with Dockerfile.nipypeInterfaceAntsMC to single Dockerfile
+
+#-----------------------------------
+# Install octave FSL from repository
+#-----------------------------------
+USER root
+RUN apt-get update -qq && apt-get install -yq --no-install-recommends \
+        octave \
+        fsl-core fsl-mni152-templates fsl-atlases fsl-5.0-eddy-nonfree && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
+    ln -s /usr/bin/octave /usr/bin/matlab && \
+    chown $NB_USER /opt
+ENV FSLDIR=/usr/share/fsl/5.0 \
+    FSLOUTPUTTYPE=NIFTI_GZ \
+    FSLMULTIFILEQUIT=TRUE \
+    POSSUMDIR=/usr/share/fsl/5.0 \
+    LD_LIBRARY_PATH=/usr/lib/fsl/5.0:$LD_LIBRARY_PATH \
+    FSLTCLSH=/usr/bin/tclsh \
+    FSLWISH=/usr/bin/wish \
+    PATH=/usr/lib/fsl/5.0:$PATH
+
+#-----------------
+# Install dcm2niix
+#-----------------
+USER root
+RUN apt-get update -qq && apt-get install -yq --no-install-recommends \
+       build-essential && \
+   apt-get clean && \
+   rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+USER $NB_USER
+WORKDIR /tmp
+RUN git clone https://github.com/neurolabusc/dcm2niix.git && \
+    cd dcm2niix/console/ && \
+    git checkout b3c146bc49e1bcb1bd91f786523b7bd5740787fc && \
+    g++ -O3 -I. main_console.cpp nii_dicom.cpp jpg_0XC3.cpp ujpeg.cpp \
+         nifti1_io_core.cpp nii_ortho.cpp nii_dicom_batch.cpp  \
+         -o dcm2niix -DmyDisableOpenJPEG -DmyDisableJasper && \
+    mkdir -p /opt/bin && cp dcm2niix /opt/bin/ && \
+    cd /tmp && rm -rf dcm2niix
+
+#-------------
+# Install ANTS
+#-------------
+# USER root
+# RUN apt-get update -qq && apt-get install -yq --no-install-recommends \
+#        build-essential && \
+#    apt-get clean && \
+#    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+# USER $NB_USER
+# WORKDIR /tmp
+# RUN git clone https://github.com/stnava/ANTs.git && \
+#    cd ANTs && \
+#    git checkout 767f756bc0e423cd503a24c806b6578aaeb5b82f && \
+#    mkdir build && cd build && cmake .. && make && \
+#    mkdir -p /opt/ants && \
+#    cp bin/* /opt/ants && cp ../Scripts/* /opt/ants && \
+#    cd /tmp && rm -rf ANTs
+RUN curl -sSL https://dl.dropbox.com/s/btep51gtglp7kwh/ants.tgz?dl=0 | tar zx -C /
+ENV ANTSPATH=/opt/ants/ \
+    PATH=/opt/ants:$PATH
+
+#------------
+# Install c3d
+#------------
+RUN mkdir -p /opt/c3d && \
+    curl -sSL "http://downloads.sourceforge.net/project/c3d/c3d/1.0.0/c3d-1.0.0-Linux-x86_64.tar.gz" \
+    | tar -xzC /opt/c3d --strip-components 1
+ENV C3DPATH=/opt/c3d \
+    PATH=/opt/c3d/bin:$PATH
+
+#----------------------------------------
+# Clear apt cache and other empty folders
+#----------------------------------------
+USER root
+RUN apt-get clean && apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /boot /media /mnt /srv && \
+    chmod a+w /tmp
+
+WORKDIR /home/$NB_USER/work
+USER $NB_USER
